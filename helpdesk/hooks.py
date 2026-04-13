@@ -7,6 +7,7 @@ app_color = "grey"
 app_email = "hello@frappe.io"
 app_license = "AGPLv3"
 required_apps = ["telephony"]
+require_type_annotated_api_methods = True
 
 add_to_apps_screen = [
     {
@@ -81,8 +82,13 @@ doc_events = {
         "after_insert": [
             "helpdesk.helpdesk.events.emailcc_sync.notify_customer_on_manager_reply",
             "helpdesk.helpdesk.events.emailcc_sync.notify_team_on_customer_reply"
-        ]
-    }
+        ],
+        "before_insert": "helpdesk.helpdesk.events.emailcc_sync.block_default_email"
+    },
+    # "Email Queue": {
+    #     "before_insert": "helpdesk.helpdesk.events.emailcc_sync.block_default_email"
+    # }
+
 }
 
 has_permission = {

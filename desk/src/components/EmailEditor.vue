@@ -6,13 +6,14 @@
       'min-h-[7rem]',
       getFontFamily(newEmail),
       editable && '!max-h-[35vh] overflow-y-auto',
+      '[&_p.reply-to-content]:hidden',
     ]"
     :content="newEmail"
     :starterkit-options="{ heading: { levels: [2, 3, 4, 5, 6] } }"
     :placeholder="placeholder"
     :editable="editable"
     @change="editable ? (newEmail = $event) : null"
-    :extensions="[PreserveVideoControls]"
+    :extensions="[ComponentUtils, HandleExcelPaste]"
     :uploadFunction="(file:any)=>uploadFunction(file, doctype, ticketId)"
   >
     <template #top>
@@ -75,16 +76,26 @@
       <div class="flex flex-wrap gap-2 px-10">
         <AttachmentItem
           v-for="a in attachments"
-          :key="a.file_url"
+          :key="a.name || a.file_url"
           :label="a.file_name"
-          :url="!['MOV', 'MP4'].includes(a.file_type) ? a.file_url : null"
+          :url="(() => {
+            const ext = a.file_name?.split('.').pop()?.toLowerCase();
+            const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+            return a.attached_to_name && imageExts.includes(ext) ? a.file_url : null;
+          })()"
         >
           <template #suffix>
-            <FeatherIcon
-              class="h-3.5"
-              name="x"
-              @click.self.stop="removeAttachment(a)"
-            />
+            <button
+              type="button"
+              class="cursor-pointer"
+              style="cursor: pointer;"
+              @click.stop.prevent="removeAttachment(a)"
+              @mousedown.stop.prevent
+              @pointerdown.stop.prevent
+              @touchstart.stop.prevent
+            >
+              <FeatherIcon class="h-3.5" name="x" />
+            </button>
           </template>
         </AttachmentItem>
       </div>
@@ -170,7 +181,7 @@ import {
 import { AttachmentIcon } from "@/components/icons";
 import { useTyping } from "@/composables/realtime";
 import { useAuthStore } from "@/stores/auth";
-import { PreserveVideoControls } from "@/tiptap-extensions";
+import { ComponentUtils, HandleExcelPaste } from "@/tiptap-extensions";
 import {
   getFontFamily,
   isContentEmpty,
@@ -236,7 +247,10 @@ const label = computed(() => {
 
 const emit = defineEmits(["submit", "discard"]);
 
-const newEmail = useStorage("emailBoxContent" + props.ticketId, null);
+const newEmail = useStorage<null | string>(
+  "emailBoxContent" + props.ticketId,
+  null
+);
 const { updateOnboardingStep } = useOnboarding("helpdesk");
 const { isManager } = useAuthStore();
 
@@ -245,6 +259,7 @@ const { onUserType, cleanup } = useTyping(props.ticketId);
 
 const attachments = ref([]);
 const isUploading = ref(false);
+
 const isDisabled = computed(() => {
   return (
     isContentEmpty(newEmail.value) || sendMail.loading || isUploading.value
@@ -272,8 +287,10 @@ const bcc = computed(() => (bccEmailsClone.value?.length ? true : false));
 const ccInput = ref(null);
 const bccInput = ref(null);
 
-function applySavedReplies(template) {
-  newEmail.value = template;
+function applySavedReplies(template: string) {
+  isContentEmpty(newEmail.value)
+    ? (newEmail.value = template)
+    : (newEmail.value = newEmail.value + "\n" + template);
   showSavedRepliesSelectorModal.value = false;
 }
 
@@ -284,7 +301,7 @@ const sendMail = createResource({
     dn: props.ticketId,
     method: "reply_via_agent",
     args: {
-      attachments: attachments.value.map((x) => x.name),
+      attachments: attachments.value.map((x) => x.name || x.file_name),
       to: toEmailsClone.value.join(","),
       cc: ccEmailsClone.value?.join(","),
       bcc: bccEmailsClone.value?.join(","),
@@ -335,7 +352,9 @@ function toggleBCC() {
 
 async function removeAttachment(attachment) {
   attachments.value = attachments.value.filter((a) => a !== attachment);
-  await removeAttachmentFromServer(attachment.name);
+  if (attachment.name) {
+    await removeAttachmentFromServer(attachment.name);
+  }
 }
 
 function addToReply(
@@ -347,15 +366,18 @@ function addToReply(
   toEmailsClone.value = toEmails;
   ccEmailsClone.value = ccEmails;
   bccEmailsClone.value = bccEmails;
+  const repliedMessage = `<p class="reply-to-content"><p><blockquote>${body}</blockquote>`;
   editorRef.value.editor
     .chain()
     .clearContent()
-    .insertContent(body)
+    .insertContent(repliedMessage)
     .focus("all")
-    .setBlockquote()
     .insertContentAt(0, { type: "paragraph" })
     .focus("start")
     .run();
+  nextTick(() => {
+    newEmail.value = editorRef.value.editor.getHTML();
+  });
 }
 
 function resetState() {

@@ -1,8 +1,6 @@
 import frappe
 from frappe import _
 
-from helpdesk.utils import agent_only
-
 
 def assign_ticket_to_agent(ticket_id, agent_id=None):
     if not ticket_id:
@@ -19,7 +17,6 @@ def assign_ticket_to_agent(ticket_id, agent_id=None):
 
     ticket_doc.assign_agent(agent_id)
     return ticket_doc
-
 
 @frappe.whitelist()
 @agent_only
